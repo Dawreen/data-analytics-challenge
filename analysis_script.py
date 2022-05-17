@@ -46,7 +46,8 @@ def clean_index(dataset):
     return ret
 
 # %% [markdown]
-# After we cleaned the data we check the datatype and we handle the missing that.
+# After we cleaned the data we check the datatype and we handle the missing data.
+# Different datasets may need different ways of handling, at first we will use `None` to replace `*`.
 
 # %%
 def check_type_missing(dataset, missing, rent=None):
@@ -58,9 +59,22 @@ def check_type_missing(dataset, missing, rent=None):
         col2 = 'Average announced rent in €'
         col3 = 'Average announced rent per squared meter in €'
 
-    # easy handling of missing data, may change for better modeling
-    val = missing
-    dataset.replace('*', val, inplace=True)
+    # TODO if missing replace with lux average
+
+    # We handle the missing data replacing it with the average in the city of luxemburg
+    # in the specific year
+    for (commune, year) in dataset.index:
+        if dataset.loc[(commune, year), col2] == '*':
+            dataset.loc[(commune, year), col2] = missing[0].loc[year, col2]
+        if dataset.loc[(commune, year), col3] == '*':
+            dataset.loc[(commune, year), col3] = missing[0].loc[year, col3]
+
+    # a safe check easy handling of missing data, may change for better modeling
+    # val = 0
+    # dataset.replace('*', val, inplace=True)
+
+
+    # setting the type
     dataset.loc[:,col1] = dataset.loc[:,col1].astype('int64')
     dataset.loc[:,col2] = dataset.loc[:,col2].astype('float64').round(2)
     dataset.loc[:,col3] = dataset.loc[:,col3].astype('float64').round(2)
@@ -83,20 +97,22 @@ price_ap_data = pd.read_excel(price_app_filepath)
 price_ap_data
 
 # %%
-
 # cleaning the indexing
 temp =  clean_index(price_ap_data)
 d1_lux_avg = temp[0]
 d1_nat_avg = temp[1]
 
-print(d1_lux_avg)
-print(d1_nat_avg)
-
 price_ap_data
 
 # %%
+d1_nat_avg
+
+# %%
+d1_lux_avg.loc[2017]
+
+# %%
 # checking the types and handling missing values
-check_type_missing(price_ap_data, 0)
+check_type_missing(price_ap_data, temp)
 price_ap_data
 
 # %%
@@ -109,14 +125,14 @@ temp = clean_index(price_hous_data)
 d2_lux_avg = temp[0]
 d2_nat_avg = temp[1]
 
-print(d2_lux_avg)
-print(d2_nat_avg)
+# print(d2_lux_avg)
+# print(d2_nat_avg)
 
 price_hous_data.head()
 
 # %%
 # checking types and handling missing data
-check_type_missing(price_hous_data, 0)
+check_type_missing(price_hous_data, temp)
 price_hous_data
 
 # %%
@@ -135,19 +151,31 @@ print(d3_nat_avg)
 rent_ap_data.head()
 
 # %%
-check_type_missing(rent_ap_data, 0, rent=True)
+check_type_missing(rent_ap_data, temp, rent=True)
 rent_ap_data
 
 # %%
 reg_price_data = pd.read_excel(reg_price_filepath)
-reg_price_data
 
 # %%
 tuples1 = []
-for el in reg_price_data.iloc[0, 1:4]:
-    tuples1.append(("Constructed", el))
-for el in reg_price_data.iloc[0, 1:4]:
-    tuples1.append(("VEFA", el))
+# Sales of already constructed apartments
+constructed = "Constructed"
+# Sales of apartments still under construction (Ventes en Etat Futur D'Achevement [VEFA])
+to_be_done = "VEFA"
+# Price range for price per squared meter
+r_min = "min range"
+r_max = "max range"
+
+for el in reg_price_data.iloc[0, 1:3]:
+    tuples1.append((constructed, el))
+tuples1.append((constructed, r_min))
+#tuples1.append((constructed, r_max))
+
+for el in reg_price_data.iloc[0, 1:3]:
+    tuples1.append((to_be_done, el))
+tuples1.append((to_be_done, r_min))
+#tuples1.append((to_be_done, r_max))
 
 print(tuples1)
 
@@ -181,11 +209,41 @@ reg_price_data.columns = new_columns
 reg_price_data
 
 # %%
-reg_price_data.loc[:,("Constructed", "Price range for price per squared meter")]
-# TODO #2 parse the range constructed
-# TODO #3 parse the range VEFA
+# function to clean separete correctly the min and max range in Price range for price per squared meter
+def organize_range(ind1, ind2, to_insert, col_loc):
+    aux = reg_price_data.loc[:,(ind1, ind2)].str.split(" - ", expand=True)
+    col1_val = aux.iloc[:,0].map(lambda s: s.replace(" €", "") if s != None else "*")
+    col2_val = aux.iloc[:,1].map(lambda s: s.replace(" €", "") if s != None else "*")
+    # TODO #7 issue on split not good
+
+    reg_price_data.loc[:,(ind1, ind2)] = col1_val
+    reg_price_data.insert(col_loc, (ind1, to_insert), col2_val)
 
 # %%
+# splitting the constructed range
+organize_range(constructed, r_min, r_max, 3)
 
+# splitting the VEFA range
+organize_range(to_be_done, r_min, r_max, 7)
+
+reg_price_data
+
+
+# %%
+# todo #6 change type
+
+reg_price_data.replace("*", "", inplace=True)
+
+#reg_price_data.replace("*", None, inplace=True)
+col1 = (constructed, "Number of sales")
+col2 = (constructed, "Average registered price per squared meter in €")
+col3 = (constructed, r_min)
+
+print(f"{str(col1) + ':':<50} \
+    {str(reg_price_data.loc[:,col1].dtype)}")
+print(f"{str(col2) + ':':<50} \
+    {str(reg_price_data.loc[:,col2].dtype)}")
+print(f"{str(col3) + ':':<50} \
+    {str(reg_price_data.loc[:,col3].dtype)}")
 
 
